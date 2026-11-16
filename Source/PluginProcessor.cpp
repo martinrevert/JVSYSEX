@@ -1,9 +1,41 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Librarian/SyxMidFileIO.h"
+
+namespace {
+juce::File getUserBankCacheFile() {
+    auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                   .getChildFile("JV-1010 Editor Pro");
+    dir.createDirectory();
+    return dir.getChildFile("user_bank_cache.syx");
+}
+} // namespace
 
 JV1010EditorAudioProcessor::JV1010EditorAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts_(*this, nullptr, "JV1010Params", createParameterLayout()) {
+
+    loadUserBankCache();
+
+    synthState_.addListener([this](uint32_t address) {
+        uint8_t b0 = static_cast<uint8_t>((address >> 24) & 0x7F);
+        if (b0 == 0x10 || b0 == 0x11) {
+            userCacheDirty_.store(true);
+            if (!userCacheSaveScheduled_.exchange(true)) {
+                juce::WeakReference<JV1010EditorAudioProcessor> safeThis(this);
+                juce::MessageManager::callAsync([safeThis]() {
+                    if (safeThis == nullptr) return;
+                    juce::Timer::callAfterDelay(1500, [safeThis]() {
+                        if (safeThis == nullptr) return;
+                        safeThis->userCacheSaveScheduled_.store(false);
+                        if (safeThis->userCacheDirty_.exchange(false)) {
+                            safeThis->saveUserBankCache();
+                        }
+                    });
+                });
+            }
+        }
+    });
 
     midiManager_.setSysExReceivedCallback([this](const uint8_t* data, int size) {
         handleIncomingSysEx(data, size);
@@ -15,9 +47,20 @@ JV1010EditorAudioProcessor::JV1010EditorAudioProcessor()
             apvts_.addParameterListener(ranged->getParameterID(), this);
         }
     }
+
+    // Auto-sync initial state (System Common, Temp Patch Volume/Params, Temp Perf) if MIDI ports are ready
+    juce::WeakReference<JV1010EditorAudioProcessor> safeInit(this);
+    juce::Timer::callAfterDelay(350, [safeInit]() {
+        if (safeInit != nullptr && safeInit->midiManager_.isInputOpen() && safeInit->midiManager_.isOutputOpen()) {
+            safeInit->requestTemporaryStateFromHardware();
+        }
+    });
 }
 
 JV1010EditorAudioProcessor::~JV1010EditorAudioProcessor() {
+    if (userCacheDirty_.exchange(false)) {
+        saveUserBankCache();
+    }
     for (auto* param : getParameters()) {
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param)) {
             apvts_.removeParameterListener(ranged->getParameterID(), this);
@@ -169,10 +212,11 @@ void JV1010EditorAudioProcessor::parameterChanged(const juce::String& parameterI
 
 void JV1010EditorAudioProcessor::selectPatch(jv1010::PatchBank bank, int patchIndexZeroBased, int midiChannelZeroBased) {
     int ch = juce::jlimit(0, 15, midiChannelZeroBased);
-    bool needMode = (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 1);
+    bool needMode = (lastSentSoundMode_ != 1) || (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 1);
     bool needCh   = (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::PatchReceiveChannel) != static_cast<uint8_t>(ch));
 
     if (needMode) {
+        lastSentSoundMode_ = 1;
         auto modeMsg = jv1010::sysex::buildDT1SingleByte(deviceId_, jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 1);
         synthState_.setByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 1);
         midiManager_.sendChannelMessage(juce::MidiMessage::createSysExMessage(modeMsg.data() + 1, static_cast<int>(modeMsg.size() - 2)));
@@ -213,8 +257,9 @@ void JV1010EditorAudioProcessor::selectPatch(jv1010::PatchBank bank, int patchIn
 }
 
 void JV1010EditorAudioProcessor::selectPerformance(jv1010::PerfBank bank, int perfIndexZeroBased) {
-    bool needMode = (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 0);
+    bool needMode = (lastSentSoundMode_ != 0) || (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 0);
     if (needMode) {
+        lastSentSoundMode_ = 0;
         auto modeMsg = jv1010::sysex::buildDT1SingleByte(deviceId_, jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 0);
         synthState_.setByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 0);
         midiManager_.sendChannelMessage(juce::MidiMessage::createSysExMessage(modeMsg.data() + 1, static_cast<int>(modeMsg.size() - 2)));
@@ -258,8 +303,9 @@ void JV1010EditorAudioProcessor::selectPerformance(jv1010::PerfBank bank, int pe
 
 void JV1010EditorAudioProcessor::selectRhythmSet(jv1010::RhythmBank bank, int kitIndexZeroBased, int midiChannelZeroBased) {
     // Rhythm sets operate in Performance mode (SoundMode = 0)
-    bool needMode = (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 0);
+    bool needMode = (lastSentSoundMode_ != 0) || (synthState_.getByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode) != 0);
     if (needMode) {
+        lastSentSoundMode_ = 0;
         auto modeMsg = jv1010::sysex::buildDT1SingleByte(deviceId_, jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 0);
         synthState_.setByte(jv1010::addr::kSystemBase | jv1010::addr::sys::SoundMode, 0);
         midiManager_.sendChannelMessage(juce::MidiMessage::createSysExMessage(modeMsg.data() + 1, static_cast<int>(modeMsg.size() - 2)));
@@ -364,7 +410,29 @@ void JV1010EditorAudioProcessor::handleIncomingSysEx(const uint8_t* data, int si
     if (parsed.type == jv1010::sysex::MessageType::JV_DT1 && parsed.checksumValid) {
         synthState_.applyDT1(parsed.address, parsed.payload);
     }
-    expansionDetector_.handleSysEx(parsed);
+}
+
+void JV1010EditorAudioProcessor::loadUserBankCache() {
+    auto cacheFile = getUserBankCacheFile();
+    if (cacheFile.existsAsFile()) {
+        jv1010::SyxMidFileIO::importFile(cacheFile, synthState_, jv1010::ImportTargetMode::PreserveAddresses, 0, deviceId_);
+    }
+}
+
+void JV1010EditorAudioProcessor::saveUserBankCache() {
+    auto cacheFile = getUserBankCacheFile();
+    auto perfPkts = jv1010::SyxMidFileIO::collectPacketsForScope(synthState_, jv1010::ExportScope::UserPerformances32, deviceId_);
+    auto rhyPkts  = jv1010::SyxMidFileIO::collectPacketsForScope(synthState_, jv1010::ExportScope::UserRhythmSets2, deviceId_);
+    auto patPkts  = jv1010::SyxMidFileIO::collectPacketsForScope(synthState_, jv1010::ExportScope::UserPatches128, deviceId_);
+
+    juce::FileOutputStream stream(cacheFile);
+    if (!stream.openedOk()) return;
+    stream.setPosition(0);
+    stream.truncate();
+    for (const auto& pkt : perfPkts) stream.write(pkt.data(), pkt.size());
+    for (const auto& pkt : rhyPkts)  stream.write(pkt.data(), pkt.size());
+    for (const auto& pkt : patPkts)  stream.write(pkt.data(), pkt.size());
+    stream.flush();
 }
 
 void JV1010EditorAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {

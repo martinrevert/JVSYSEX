@@ -87,7 +87,7 @@ void PatchEditor::render() {
         processor_.sendParameterDT1(patchBase | addr::patch_common::ClockSource, static_cast<uint8_t>(clkSrc));
     }
 
-    ImGui::SameLine(0.0f, 12.0f);
+    // Tone selector on clean row so T1..T4, Link, Copy never clip horizontally
     for (int t = 0; t < 4; ++t) {
         if (t > 0) ImGui::SameLine();
         ImGui::PushID(t);
@@ -122,7 +122,7 @@ void PatchEditor::render() {
     // MAIN 2-COLUMN SPLIT: LEFT (Tone + Matrix + 3 Envelopes) | RIGHT (Common + LFO)
     // ========================================================================
     float totalW = ImGui::GetContentRegionAvail().x;
-    float rightW = std::clamp(totalW * 0.30f, 295.0f, 390.0f);
+    float rightW = std::clamp(totalW * 0.285f, 345.0f, 385.0f);
     float leftW = std::max(420.0f, totalW - rightW - 8.0f);
 
     const auto& tn = patch.tones[static_cast<size_t>(activeTone_)];
@@ -205,7 +205,6 @@ void PatchEditor::render() {
         if (ui::FaderH("KeyLo", &kLo, 0, 127, 72.0f, kLoBuf, 0)) sendToneByte(addr::patch_tone::KeyboardRangeLower, static_cast<uint8_t>(kLo));
         ImGui::SameLine();
         if (ui::FaderH("KeyHi", &kHi, 0, 127, 72.0f, kHiBuf, 127)) sendToneByte(addr::patch_tone::KeyboardRangeUpper, static_cast<uint8_t>(kHi));
-        ImGui::SameLine();
         int vLo = tn[addr::patch_tone::VelocityRangeLower], vHi = tn[addr::patch_tone::VelocityRangeUpper], xFade = tn[addr::patch_tone::VelocityCrossFade];
         if (ui::FaderH("VelLo", &vLo, 1, 127, 64.0f, "%d", 1)) sendToneByte(addr::patch_tone::VelocityRangeLower, static_cast<uint8_t>(vLo));
         ImGui::SameLine();
@@ -494,11 +493,11 @@ void PatchEditor::render() {
         const char* pmNames[] = { "NORMAL", "LEGATO" };
         const char* ptNames[] = { "RATE", "TIME" };
         const char* psNames[] = { "PITCH", "NOTE" };
-        ImGui::SetNextItemWidth(78.0f); if (ImGui::Combo("Mode", &pMode, pmNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoMode, static_cast<uint8_t>(pMode));
+        ImGui::SetNextItemWidth(66.0f); if (ImGui::Combo("Mode", &pMode, pmNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoMode, static_cast<uint8_t>(pMode));
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(65.0f); if (ImGui::Combo("Type", &pType, ptNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoType, static_cast<uint8_t>(pType));
+        ImGui::SetNextItemWidth(56.0f); if (ImGui::Combo("Type", &pType, ptNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoType, static_cast<uint8_t>(pType));
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(68.0f); if (ImGui::Combo("Start", &pStart, psNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoStart, static_cast<uint8_t>(pStart));
+        ImGui::SetNextItemWidth(60.0f); if (ImGui::Combo("Start", &pStart, psNames, 2)) processor_.sendParameterDT1(patchBase | addr::patch_common::PortamentoStart, static_cast<uint8_t>(pStart));
 
         // Peak + Hold
         ui::SectionHeader("PEAK + HOLD", IM_COL32(198, 42, 42, 255));
@@ -507,12 +506,12 @@ void PatchEditor::render() {
         int hp1 = patch.common[addr::patch_common::Control1HoldPeak];
         int hp2 = patch.common[addr::patch_common::Control2HoldPeak];
         int hp3 = patch.common[addr::patch_common::Control3HoldPeak];
-        ImGui::SetNextItemWidth(92.0f); if (ImGui::Combo("EFX Ctrl", &hpE, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::EFXControlHoldPeak, static_cast<uint8_t>(hpE));
+        ImGui::SetNextItemWidth(82.0f); if (ImGui::Combo("EFX", &hpE, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::EFXControlHoldPeak, static_cast<uint8_t>(hpE));
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(92.0f); if (ImGui::Combo("Ctrl 1", &hp1, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control1HoldPeak, static_cast<uint8_t>(hp1));
-        ImGui::SetNextItemWidth(92.0f); if (ImGui::Combo("Ctrl 2", &hp2, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control2HoldPeak, static_cast<uint8_t>(hp2));
+        ImGui::SetNextItemWidth(82.0f); if (ImGui::Combo("Ctrl 1", &hp1, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control1HoldPeak, static_cast<uint8_t>(hp1));
+        ImGui::SetNextItemWidth(82.0f); if (ImGui::Combo("Ctrl 2", &hp2, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control2HoldPeak, static_cast<uint8_t>(hp2));
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(92.0f); if (ImGui::Combo("Ctrl 3", &hp3, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control3HoldPeak, static_cast<uint8_t>(hp3));
+        ImGui::SetNextItemWidth(82.0f); if (ImGui::Combo("Ctrl 3", &hp3, hpNames, 4)) processor_.sendParameterDT1(patchBase | addr::patch_common::Control3HoldPeak, static_cast<uint8_t>(hp3));
 
         // Structures 1+2 & 3+4
         ui::SectionHeader("STRUCTURES 1+2 & 3+4", IM_COL32(36, 98, 178, 255));
@@ -566,11 +565,11 @@ void PatchEditor::render() {
                 int v1 = static_cast<int>(tn[off1]) - bias;
                 int v2 = static_cast<int>(tn[off2]) - bias;
                 const char* fmt = (bias > 0) ? "%+d" : "%d";
-                ImGui::TableSetColumnIndex(1); ImGui::PushID(static_cast<int>(off1)); ImGui::SetNextItemWidth(-1.0f);
-                if (ImGui::DragInt("##1", &v1, 0.5f, minV, maxV, fmt)) sendToneByte(off1, static_cast<uint8_t>(v1 + bias));
+                ImGui::TableSetColumnIndex(1); ImGui::PushID(static_cast<int>(off1));
+                if (ui::FaderH("##1", &v1, minV, maxV, 76.0f, fmt, 0)) sendToneByte(off1, static_cast<uint8_t>(v1 + bias));
                 ImGui::PopID();
-                ImGui::TableSetColumnIndex(2); ImGui::PushID(static_cast<int>(off2)); ImGui::SetNextItemWidth(-1.0f);
-                if (ImGui::DragInt("##2", &v2, 0.5f, minV, maxV, fmt)) sendToneByte(off2, static_cast<uint8_t>(v2 + bias));
+                ImGui::TableSetColumnIndex(2); ImGui::PushID(static_cast<int>(off2));
+                if (ui::FaderH("##2", &v2, minV, maxV, 76.0f, fmt, 0)) sendToneByte(off2, static_cast<uint8_t>(v2 + bias));
                 ImGui::PopID();
             };
 

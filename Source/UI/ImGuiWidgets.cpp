@@ -29,13 +29,6 @@ void SectionHeader(const char* title, ImU32 barColor) {
 
 bool ToggleSwitch(const char* label, bool* v) {
     ImGui::PushID(label);
-    ImGui::BeginGroup();
-
-    const char* visibleLabel = label;
-    if (const char* hash = std::strstr(label, "##")) {
-        visibleLabel = nullptr; // Handle ## hidden label gracefully below
-        (void)hash;
-    }
     char cleanLbl[128] = {};
     if (label) {
         size_t len = 0;
@@ -44,63 +37,19 @@ bool ToggleSwitch(const char* label, bool* v) {
             ++len;
         }
         cleanLbl[len] = '\0';
-        visibleLabel = cleanLbl;
     }
 
-    ImVec2 lblSz = (visibleLabel && visibleLabel[0]) ? ImGui::CalcTextSize(visibleLabel) : ImVec2(0.0f, 0.0f);
-    float swW = 24.0f;
-    float swH = 30.0f;
-    float totalW = swW + (lblSz.x > 0.0f ? (6.0f + lblSz.x) : 0.0f);
-    float totalH = std::max(swH, lblSz.y + 4.0f);
+    const char* btnText = cleanLbl[0] ? cleanLbl : (*v ? "ON" : "OFF");
+    ImVec2 txtSz = ImGui::CalcTextSize(btnText);
+    ImVec2 btnSz(std::max(32.0f, txtSz.x + 14.0f), std::max(24.0f, txtSz.y + 10.0f));
 
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    bool pressed = ImGui::InvisibleButton("##toggle", ImVec2(totalW, totalH));
-    bool hovered = ImGui::IsItemHovered();
-    if (pressed) {
+    bool clicked = RolandButton(btnText, *v, btnSz, *v ? 1 : 3);
+    if (clicked) {
         *v = !(*v);
     }
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    float cx = pos.x + swW * 0.5f;
-    float cy = pos.y + totalH * 0.5f + 3.0f;
-
-    // LED indicator above toggle switch
-    ImVec2 ledPos(cx, pos.y + 4.5f);
-    if (*v) {
-        dl->AddCircleFilled(ledPos, 5.5f, IM_COL32(239, 68, 68, 55), 14);
-        dl->AddCircleFilled(ledPos, 3.0f, IM_COL32(255, 72, 60, 255), 12);
-        dl->AddCircleFilled(ImVec2(ledPos.x - 0.8f, ledPos.y - 0.8f), 1.0f, IM_COL32(255, 210, 200, 230), 8);
-    } else {
-        dl->AddCircleFilled(ledPos, 3.0f, IM_COL32(58, 22, 22, 255), 12);
-        dl->AddCircle(ledPos, 3.0f, IM_COL32(20, 22, 26, 255), 12, 1.0f);
-    }
-
-    // Metallic brushed bezel & hex nut
-    dl->AddCircleFilled(ImVec2(cx, cy), 8.5f, IM_COL32(22, 24, 28, 255), 16);
-    dl->AddCircleFilled(ImVec2(cx, cy), 6.5f, hovered ? IM_COL32(150, 156, 168, 255) : IM_COL32(118, 124, 136, 255), 6);
-    dl->AddCircle(ImVec2(cx, cy), 6.5f, IM_COL32(45, 48, 54, 255), 6, 1.2f);
-    dl->AddCircleFilled(ImVec2(cx, cy), 3.4f, IM_COL32(18, 20, 24, 255), 12);
-
-    // Chrome toggle lever angled UP (ON) or DOWN (OFF)
-    float tipY = *v ? (cy - 10.5f) : (cy + 10.5f);
-    // Drop shadow
-    dl->AddLine(ImVec2(cx + 1.5f, cy + 1.0f), ImVec2(cx + 2.5f, tipY + 1.5f), IM_COL32(8, 9, 12, 180), 4.0f);
-    // Chrome shaft
-    dl->AddLine(ImVec2(cx, cy), ImVec2(cx, tipY), IM_COL32(185, 192, 204, 255), 3.6f);
-    dl->AddLine(ImVec2(cx - 0.7f, cy), ImVec2(cx - 0.7f, tipY), IM_COL32(242, 246, 252, 220), 1.2f);
-    // Rounded chrome bat tip
-    dl->AddCircleFilled(ImVec2(cx, tipY), 2.8f, IM_COL32(218, 224, 234, 255), 12);
-    dl->AddCircleFilled(ImVec2(cx - 0.7f, tipY - 0.7f), 1.1f, IM_COL32(255, 255, 255, 230), 8);
-
-    if (visibleLabel && visibleLabel[0]) {
-        dl->AddText(ImVec2(pos.x + swW + 4.0f, pos.y + (totalH - lblSz.y) * 0.5f),
-                    *v ? IM_COL32(240, 236, 226, 255) : IM_COL32(175, 180, 190, 255),
-                    visibleLabel);
-    }
-
-    ImGui::EndGroup();
     ImGui::PopID();
-    return pressed;
+    return clicked;
 }
 
 bool FaderV(const char* label, int* v, int vMin, int vMax,
@@ -118,8 +67,13 @@ bool FaderV(const char* label, int* v, int vMin, int vMax,
         cleanLbl[len] = '\0';
     }
 
+    char valPreview[32];
+    std::snprintf(valPreview, sizeof(valPreview), displayFmt, *v);
+    ImVec2 lblSz = cleanLbl[0] ? ImGui::CalcTextSize(cleanLbl) : ImVec2(0.0f, 0.0f);
+    ImVec2 valPreSz = ImGui::CalcTextSize(valPreview);
+
     float lblH = ImGui::GetTextLineHeight();
-    float w = 40.0f;
+    float w = std::max({ 42.0f, lblSz.x + 8.0f, valPreSz.x + 8.0f });
     ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##fader", ImVec2(w, height + lblH * 2.0f + 8.0f));
 
@@ -399,10 +353,22 @@ bool KnobInt(const char* label, int* v, int vMin, int vMax,
     ImGui::PushID(label);
     ImGui::BeginGroup();
 
+    char cleanLbl[128] = {};
+    if (label) {
+        size_t len = 0;
+        while (label[len] && !(label[len] == '#' && label[len + 1] == '#') && len + 1 < sizeof(cleanLbl)) {
+            cleanLbl[len] = label[len];
+            ++len;
+        }
+        cleanLbl[len] = '\0';
+    }
+
     ImVec2 pos = ImGui::GetCursorScreenPos();
     float diam = radius * 2.0f;
     float labelH = ImGui::GetTextLineHeight();
-    float itemW = std::max(diam + 8.0f, 54.0f);
+    ImVec2 lblSz = cleanLbl[0] ? ImGui::CalcTextSize(cleanLbl) : ImVec2(0.0f, 0.0f);
+    float minW = (radius >= 15.0f) ? 54.0f : 34.0f;
+    float itemW = std::max({ diam + 8.0f, minW, (radius >= 15.0f ? (lblSz.x + 10.0f) : minW) });
     ImGui::InvisibleButton("##knob", ImVec2(itemW, diam + labelH * 2.0f + 6.0f));
 
     bool changed = false;
@@ -479,8 +445,9 @@ bool KnobInt(const char* label, int* v, int vMin, int vMax,
     ImVec2 valSz = ImGui::CalcTextSize(valBuf);
     dl->AddText(ImVec2(center.x - valSz.x * 0.5f, pos.y + diam + 3.0f), IM_COL32(236, 234, 226, 255), valBuf);
 
-    ImVec2 lblSz = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(center.x - lblSz.x * 0.5f, pos.y + diam + labelH + 4.0f), IM_COL32(168, 174, 184, 255), label);
+    if (cleanLbl[0]) {
+        dl->AddText(ImVec2(center.x - lblSz.x * 0.5f, pos.y + diam + labelH + 4.0f), IM_COL32(168, 174, 184, 255), cleanLbl);
+    }
 
     ImGui::EndGroup();
     ImGui::PopID();
@@ -807,6 +774,13 @@ void VirtualKeyboard(const char* id, int startNote, int endNote,
             dl->AddRectFilled(ImVec2(kMin.x, kMax.y - 4.0f), kMax,
                               act ? IM_COL32(72, 118, 196, 255) : IM_COL32(174, 170, 158, 255));
             dl->AddRect(kMin, kMax, IM_COL32(28, 30, 34, 255));
+            if (n % 12 == 0 && whiteW >= 14.0f) {
+                char cLbl[8];
+                std::snprintf(cLbl, sizeof(cLbl), "C%d", (n / 12) - 1);
+                ImVec2 cSz = ImGui::CalcTextSize(cLbl);
+                dl->AddText(ImVec2(wx + (whiteW - cSz.x) * 0.5f, kMax.y - cSz.y - 4.0f),
+                            act ? IM_COL32(255, 255, 255, 255) : IM_COL32(96, 94, 88, 220), cLbl);
+            }
             ++wi;
         }
     }

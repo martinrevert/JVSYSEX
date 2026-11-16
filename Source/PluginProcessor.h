@@ -57,6 +57,8 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void handleIncomingSysEx(const uint8_t* data, int size);
+    void loadUserBankCache();
+    void saveUserBankCache();
 
     jv1010::MidiManager midiManager_;
     jv1010::JV1010State synthState_;
@@ -64,6 +66,9 @@ private:
     juce::AudioProcessorValueTreeState apvts_;
     uint8_t deviceId_ = jv1010::sysex::kDefaultDeviceId;
     std::atomic<uint32_t> selectionRequestToken_{ 0 };
+    std::atomic<bool> userCacheDirty_{ false };
+    std::atomic<bool> userCacheSaveScheduled_{ false };
+    int lastSentSoundMode_{ -1 };
 
     JUCE_DECLARE_WEAK_REFERENCEABLE(JV1010EditorAudioProcessor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JV1010EditorAudioProcessor)

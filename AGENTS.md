@@ -36,7 +36,7 @@ Este documento define las reglas obligatorias de arquitectura, compilación, UI 
 1. **Homogeneidad fotorrealista**: Todos los controles de parámetros deben usar los widgets hardware definidos en `Source/UI/ImGuiWidgets.h` / `.cpp`:
    - **Sliders horizontales**: usar `ui::FaderH(...)`.
    - **Sliders verticales / faders de mixer**: usar `ui::FaderV(...)`.
-   - **Switches On/Off**: usar `ui::ToggleSwitch(...)` (palanca metálica con LED).
+   - **Switches On/Off**: usar `ui::ToggleSwitch(...)` (botón iluminado estilo Roland con LED rojo superior cuando está activo y gris oscuro cuando está apagado; nunca palancas ni checkboxes).
    - **Perillas**: usar `ui::KnobInt(...)`.
    - **Botones de modo/selección**: usar `ui::RolandButton(...)`.
    - **Encabezados de sección**: usar `ui::SectionHeader(...)`.

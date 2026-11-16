@@ -1,83 +1,47 @@
 #include "ExpansionDetector.h"
-#include "../Model/ParameterMaps.h"
+#include <juce_data_structures/juce_data_structures.h>
 
 namespace jv1010 {
 
+namespace {
+std::unique_ptr<juce::PropertiesFile> openAppSettings() {
+    juce::PropertiesFile::Options opts;
+    opts.applicationName = "JV-1010 Editor Pro";
+    opts.filenameSuffix = ".settings";
+    opts.osxLibrarySubFolder = "Application Support";
+    return std::make_unique<juce::PropertiesFile>(opts);
+}
+} // namespace
+
 ExpansionDetector::ExpansionDetector(MidiManager& midi, JV1010State& state)
-    : midi_(midi), synthState_(state) {}
-
-void ExpansionDetector::startAutoDetect(uint8_t deviceId,
-                                        std::function<void(const SrJv80BoardInfo*, const std::string&)> onComplete) {
-    activeDevId_ = deviceId;
-    callback_ = std::move(onComplete);
-    state_ = ProbeState::WaitingIdentity;
-
-    // Save current patch selection from state
-    prevGroupType_ = synthState_.getByte(addr::kSystemBase | addr::sys::PatchGroupType);
-    prevGroupId_   = synthState_.getByte(addr::kSystemBase | addr::sys::PatchGroupID);
-    prevPatchNum_  = synthState_.getNibbled2(addr::kSystemBase | addr::sys::PatchNumberNibbled);
-
-    // Step 1: Identity Request + switch to WAVE-EXP 001 + RQ1 System Common & Temp Patch Common
-    midi_.sendSysEx(sysex::buildIdentityRequest(activeDevId_));
-
-    int patchCh = synthState_.getByte(addr::kSystemBase | addr::sys::PatchReceiveChannel);
-    midi_.sendBankAndProgramChange(patchCh, 84, 2, 0);
-
-    std::vector<std::vector<uint8_t>> reqs;
-    reqs.push_back(sysex::buildRQ1(activeDevId_, addr::kSystemBase, addr::kSystemCommonSize7Bit));
-    reqs.push_back(sysex::buildRQ1(activeDevId_, addr::kPatchModeTempPatchBase, addr::kPatchCommonSize7Bit));
-    midi_.sendSysExQueue(reqs);
-
-    state_ = ProbeState::WaitingSystemAndPatch;
+    : midi_(midi), synthState_(state) {
+    loadPersistedBoard();
 }
 
-void ExpansionDetector::handleSysEx(const sysex::ParsedSysEx& msg) {
-    if (state_ == ProbeState::Idle) return;
-
-    if (msg.type == sysex::MessageType::IdentityReply) {
-        // Confirmed JV-1010 (familyCode == 0x6A00, familyNumberCode == 0x0500)
-        return;
-    }
-
-    if (msg.type == sysex::MessageType::JV_DT1 && msg.checksumValid) {
-        if (msg.address == addr::kPatchModeTempPatchBase && msg.payload.size() >= 12) {
-            uint8_t groupType = synthState_.getByte(addr::kSystemBase | addr::sys::PatchGroupType);
-            uint8_t groupId   = synthState_.getByte(addr::kSystemBase | addr::sys::PatchGroupID);
-            std::string patchName = sysex::decodeAsciiName12(msg.payload.data(), 12);
-
-            const SrJv80BoardInfo* board = nullptr;
-            if (groupType == 2 && groupId > 0) {
-                board = findSrJv80ByGroupId(static_cast<int>(groupId));
-            }
-            if (!board) {
-                board = findSrJv80ByFirstPatchName(patchName);
-            }
-
-            if (board) {
-                installedGroupId_ = board->groupId;
-                state_ = ProbeState::Idle;
-                if (callback_) {
-                    callback_(board, std::string("Detectada: ") + board->model + " " + board->title);
-                }
-            } else {
-                installedGroupId_ = 0;
-                state_ = ProbeState::Idle;
-                if (callback_) {
-                    callback_(nullptr, "Slot EXP-B vacio o tarjeta no reconocida.");
-                }
-            }
+void ExpansionDetector::loadPersistedBoard() {
+    if (auto props = openAppSettings()) {
+        int saved = props->getIntValue("expBoardId", 0);
+        if (saved >= 0 && saved <= 19) {
+            installedGroupId_.store(saved);
         }
     }
 }
 
-void ExpansionDetector::setInstalledBoard(int groupId) {
-    installedGroupId_ = groupId;
+void ExpansionDetector::setInstalledBoard(int groupId, bool persist) {
+    if (groupId < 0 || groupId > 19) groupId = 0;
+    installedGroupId_.store(groupId);
+    if (persist) {
+        if (auto props = openAppSettings()) {
+            props->setValue("expBoardId", groupId);
+            props->saveIfNeeded();
+        }
+    }
 }
 
 const SrJv80BoardInfo* ExpansionDetector::getInstalledBoardInfo() const {
-    int id = installedGroupId_.load();
-    if (id <= 0) return nullptr;
-    return findSrJv80ByGroupId(id);
+    int gid = installedGroupId_.load();
+    if (gid <= 0) return nullptr;
+    return findSrJv80ByGroupId(gid);
 }
 
 } // namespace jv1010

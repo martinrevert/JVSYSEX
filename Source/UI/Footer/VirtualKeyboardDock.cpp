@@ -3,6 +3,7 @@
 #include "../../Librarian/PatchMorphRandom.h"
 #include <imgui.h>
 #include <algorithm>
+#include <cmath>
 
 namespace jv1010 {
 
@@ -59,13 +60,28 @@ void VirtualKeyboardDock::render(float width, bool showKeyboard, bool showTools,
         ImGui::EndGroup();
 
         ImGui::SameLine();
-        if (ui::FaderV("Mod", &modWheelVal_, 0, 127, 74.0f, "%d", 0)) {
+        int patchVol = processor_.getSynthState().getByte(addr::kPatchModeTempPatchBase | addr::patch_common::PatchLevel);
+        if (ui::FaderV("Vol", &patchVol, 0, 127, 58.0f, "%d", 127)) {
+            processor_.sendParameterDT1(addr::kPatchModeTempPatchBase | addr::patch_common::PatchLevel, static_cast<uint8_t>(patchVol));
+            processor_.getMidiManager().sendControlChange(kbdChannelZeroBased_, 7, static_cast<uint8_t>(patchVol));
+        }
+
+        ImGui::SameLine();
+        if (ui::FaderV("Mod", &modWheelVal_, 0, 127, 58.0f, "%d", 0)) {
             processor_.getMidiManager().sendControlChange(kbdChannelZeroBased_, 1, static_cast<uint8_t>(modWheelVal_));
         }
 
         ImGui::SameLine();
-        float kbdW = std::max(100.0f, ImGui::GetContentRegionAvail().x);
-        ui::VirtualKeyboard("##VKeyboard", 36, 96, activeVirtualNote_, [this](int note, bool isDown) {
+        float availW = std::max(140.0f, ImGui::GetContentRegionAvail().x);
+        float kbdH = 88.0f;
+        float targetWhiteW = kbdH * 0.245f; // ~21.5px per white key
+        int octaves = std::clamp(static_cast<int>(std::round((availW / targetWhiteW - 1.0f) / 7.0f)), 2, 10);
+        int startNote = 36; // C2
+        if (octaves >= 6 && octaves <= 7) startNote = 24;      // C1
+        else if (octaves >= 8 && octaves <= 9) startNote = 12; // C0
+        else if (octaves >= 10) startNote = 0;                 // C-1
+        int endNote = (octaves >= 10) ? 127 : std::min(127, startNote + octaves * 12);
+        ui::VirtualKeyboard("##VKeyboard", startNote, endNote, activeVirtualNote_, [this](int note, bool isDown) {
             if (isDown) {
                 processor_.getMidiManager().sendNoteOn(kbdChannelZeroBased_, note, 105);
                 if (chordMode_) {
@@ -79,7 +95,7 @@ void VirtualKeyboardDock::render(float width, bool showKeyboard, bool showTools,
                     processor_.getMidiManager().sendNoteOff(kbdChannelZeroBased_, note + 7);
                 }
             }
-        }, ImVec2(kbdW, 76.0f));
+        }, ImVec2(availW, kbdH));
     }
 
     ImGui::EndChild();

@@ -12,9 +12,8 @@ TopControlBar::TopControlBar(JV1010EditorAudioProcessor& processor)
 
 void TopControlBar::render() {
     auto& midi = processor_.getMidiManager();
-    auto& det = processor_.getExpansionDetector();
 
-    // Row 1: MIDI In, MIDI Out, Routing, EXP-B, Detect, Sync, Status
+    // Row 1: MIDI In, MIDI Out, Routing, SysEx Queue / Status
     ImGui::SetNextItemWidth(165.0f);
     auto curIn = midi.getCurrentInputName();
     if (ImGui::BeginCombo("##MidiIn", curIn.isEmpty() ? "MIDI In: (None)" : curIn.toRawUTF8())) {
@@ -23,7 +22,12 @@ void TopControlBar::render() {
         }
         for (const auto& name : midi.getAvailableInputNames()) {
             if (ImGui::Selectable(name.toRawUTF8(), name == curIn)) {
-                juce::MessageManager::callAsync([&midi, name]() { midi.openInputDevice(name); });
+                juce::MessageManager::callAsync([this, &midi, name]() {
+                    midi.openInputDevice(name);
+                    if (midi.isInputOpen() && midi.isOutputOpen()) {
+                        processor_.requestTemporaryStateFromHardware();
+                    }
+                });
             }
         }
         ImGui::EndCombo();
@@ -38,7 +42,12 @@ void TopControlBar::render() {
         }
         for (const auto& name : midi.getAvailableOutputNames()) {
             if (ImGui::Selectable(name.toRawUTF8(), name == curOut)) {
-                juce::MessageManager::callAsync([&midi, name]() { midi.openOutputDevice(name); });
+                juce::MessageManager::callAsync([this, &midi, name]() {
+                    midi.openOutputDevice(name);
+                    if (midi.isInputOpen() && midi.isOutputOpen()) {
+                        processor_.requestTemporaryStateFromHardware();
+                    }
+                });
             }
         }
         ImGui::EndCombo();
@@ -50,52 +59,6 @@ void TopControlBar::render() {
     int routeIdx = static_cast<int>(midi.getRoutingMode());
     if (ImGui::Combo("##Routing", &routeIdx, routeNames, 3)) {
         midi.setRoutingMode(static_cast<MidiRoutingMode>(routeIdx));
-    }
-
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(175.0f);
-    const auto* curBoard = det.getInstalledBoardInfo();
-    std::string boardPreview = curBoard ? (std::string(curBoard->model) + " " + curBoard->title) : "EXP-B: None";
-    if (ImGui::BeginCombo("##ExpBoard", boardPreview.c_str())) {
-        if (ImGui::Selectable("EXP-B: None", curBoard == nullptr)) det.setInstalledBoard(0);
-        for (const auto& b : getSrJv80Catalog()) {
-            if (b.groupId == 9) continue;
-            std::string lbl = std::string(b.model) + " " + b.title;
-            if (ImGui::Selectable(lbl.c_str(), curBoard && curBoard->groupId == b.groupId)) {
-                det.setInstalledBoard(b.groupId);
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Detect EXP-B")) {
-        statusText_ = "Detectando tarjeta SR-JV80...";
-        det.startAutoDetect(processor_.getDeviceId(), [this](const SrJv80BoardInfo*, const std::string& msg) {
-            statusText_ = msg;
-        });
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Sync RQ1")) {
-        processor_.requestTemporaryStateFromHardware();
-        statusText_ = "RQ1 Temp enviado al JV-1010...";
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Pull User Bank")) {
-        ImGui::OpenPopup("##PullUserPopup");
-    }
-    if (ImGui::BeginPopup("##PullUserPopup")) {
-        if (ImGui::MenuItem("Pull User Names (Fast - 128 Patches, 32 Perfs, 2 Kits)")) {
-            processor_.requestUserBankNamesFromHardware();
-            statusText_ = "Descargando nombres del banco USER...";
-        }
-        if (ImGui::MenuItem("Pull Full User Bank (All Parameters)")) {
-            processor_.requestFullUserBankFromHardware();
-            statusText_ = "Descargando memoria USER completa...";
-        }
-        ImGui::EndPopup();
     }
 
     size_t pending = midi.getPendingSysExCount();

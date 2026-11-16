@@ -18,6 +18,7 @@ private:
     JV1010EditorAudioProcessor& audioProcessor_;
     jv1010::ImGuiHost imguiHost_;
     jv1010::ImGuiAppView appView_;
+    bool initialBoundsApplied_{ false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JV1010EditorAudioProcessorEditor)
 };

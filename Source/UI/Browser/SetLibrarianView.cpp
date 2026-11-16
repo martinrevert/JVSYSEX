@@ -166,7 +166,9 @@ void SetLibrarianView::render(float width, float height, int activeKbdChannelZer
         }
     };
 
-    float listH = std::max(80.0f, ImGui::GetContentRegionAvail().y - 32.0f);
+    bool isUserBank = (bankFilter_ == 1);
+    float footerExtraH = isUserBank ? 88.0f : 60.0f;
+    float listH = std::max(80.0f, ImGui::GetContentRegionAvail().y - footerExtraH);
     ImGui::BeginChild("##BrowserList", ImVec2(0.0f, listH), true);
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(rows.size()));
@@ -226,6 +228,45 @@ void SetLibrarianView::render(float width, float height, int activeKbdChannelZer
             processor_.getMidiManager().sendSysExQueue(st.serializeRhythmToDT1(processor_.getDeviceId(), addr::getUserRhythmBase(slot & 0x01), rk));
         }
         if (setStatus) setStatus("Guardado en USER slot " + std::to_string(slot + 1));
+    }
+
+    if (isUserBank) {
+        if (ImGui::Button("Sync RQ1")) {
+            processor_.requestTemporaryStateFromHardware();
+            if (setStatus) setStatus("RQ1 Temp enviado al JV-1010...");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Pull User Bank")) {
+            ImGui::OpenPopup("##PullUserPopup");
+        }
+        if (ImGui::BeginPopup("##PullUserPopup")) {
+            if (ImGui::MenuItem("Pull User Names (Fast - 128 Patches, 32 Perfs, 2 Kits)")) {
+                processor_.requestUserBankNamesFromHardware();
+                if (setStatus) setStatus("Descargando nombres del banco USER...");
+            }
+            if (ImGui::MenuItem("Pull Full User Bank (All Parameters)")) {
+                processor_.requestFullUserBankFromHardware();
+                if (setStatus) setStatus("Descargando memoria USER completa...");
+            }
+            ImGui::EndPopup();
+        }
+    }
+
+    // EXP-B Expansion Board selector (persisted across sessions)
+    auto& det = processor_.getExpansionDetector();
+    const auto* curBoard = det.getInstalledBoardInfo();
+    std::string boardPreview = curBoard ? (std::string(curBoard->model) + " " + curBoard->title) : "EXP-B: None";
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##ExpBoard", boardPreview.c_str())) {
+        if (ImGui::Selectable("EXP-B: None", curBoard == nullptr)) det.setInstalledBoard(0);
+        for (const auto& b : getSrJv80Catalog()) {
+            if (b.groupId == 9) continue;
+            std::string lbl = std::string(b.model) + " " + b.title;
+            if (ImGui::Selectable(lbl.c_str(), curBoard && curBoard->groupId == b.groupId)) {
+                det.setInstalledBoard(b.groupId);
+            }
+        }
+        ImGui::EndCombo();
     }
 
     ImGui::EndChild();

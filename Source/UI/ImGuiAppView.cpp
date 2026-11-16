@@ -44,12 +44,15 @@ void ImGuiAppView::render() {
 
         bool showKbd = topBar_.isKeyboardVisible();
         bool showTools = topBar_.isToolsVisible();
-        float footerH = (showTools ? 34.0f : 0.0f) + (showKbd ? 92.0f : 0.0f);
+        float footerH = (showTools ? 34.0f : 0.0f) + (showKbd ? 106.0f : 0.0f);
         float bodyH = std::max(120.0f, ImGui::GetContentRegionAvail().y - footerH - (footerH > 0.0f ? 6.0f : 0.0f));
 
-        browser_.render(285.0f, bodyH, footerDock_.getActiveMidiChannelZeroBased(),
+        browser_.render(255.0f, bodyH, footerDock_.getActiveMidiChannelZeroBased(),
                         [this](const std::string& st) { topBar_.setStatusText(st); },
-                        [this](int tabIdx) { requestedEditorTab_ = tabIdx; });
+                        [this](int tabIdx) {
+                            if (tabIdx == 0) patchEditor_.setTargetPart(-1);
+                            requestedEditorTab_ = tabIdx;
+                        });
         ImGui::SameLine();
 
         ImGui::BeginChild("##EditorTabsPane", ImVec2(0.0f, bodyH), true);

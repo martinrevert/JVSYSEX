@@ -5,11 +5,25 @@
 
 namespace jv1010 {
 
+enum class EfxControlStyle {
+    Knob = 0,
+    VSlider,
+    HSlider,
+    Toggle,
+    Segmented,
+    Choice
+};
+
 struct EfxParamDef {
     const char* name = "(not used)";
     int minVal = 0;
     int maxVal = 127;
     bool used = false;
+    EfxControlStyle style = EfxControlStyle::Knob;
+    int displayOffset = 0;
+    const char* displayFmt = "%d";
+    const char* const* valueLabels = nullptr;
+    int valueLabelCount = 0;
 };
 
 struct EfxAlgorithmDef {

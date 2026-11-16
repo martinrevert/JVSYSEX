@@ -71,3 +71,15 @@ Este documento define las reglas obligatorias de arquitectura, compilación, UI 
 - **NO** enviar `DT1(SoundMode)` incondicionalmente en cada clic de Patch/Performance justo antes de `Program Change` (provoca que el JV-1010 ignore el `Program Change` mientras reinicia el modo).
 - **NO** enviar ráfagas masivas de `RQ1` a intervalos menores a 35–70 ms.
 - **NO** asumir que los efectos de Patch están rotos si no se escuchan: recordar verificar `Master EFX/Chorus/Reverb` (`System Common`) y `OutputAssign = EFX (1)` en los Tones activos.
+
+---
+
+## 5. Versionado Semántico (SemVer) y Releases
+
+- **Fuente única de verdad**: La versión oficial del proyecto vive en `CMakeLists.txt` (`project(JV1010EditorPro VERSION X.Y.Z ...)`). Tanto el plugin VST3, la app Standalone, el instalador NSIS (`installer/JV1010EditorPro.nsi`) y el pipeline de GitHub Actions (`.github/workflows/release.yml`) leen esa versión automáticamente para generar el tag `vX.Y.Z`.
+- **Reglas obligatorias de incremento (`MAJOR.MINOR.PATCH`)**:
+  - **`PATCH` (`X.Y.Z+1`)**: Corrección de bugs, ajustes de pacing MIDI/SysEx, correcciones de layout o IDs en Dear ImGui, refactorizaciones internas sin nuevas capacidades ni cambios incompatibles (ej. `1.0.0 -> 1.0.1`).
+  - **`MINOR` (`X.Y+1.0`)**: Nuevas funcionalidades retrocompatibles (nuevos paneles/diagramas, soporte de nuevos efectos o placas, mejoras de flujo como persistencia o importación/exportación extendida) (ej. `1.0.0 -> 1.1.0`).
+  - **`MAJOR` (`X+1.0.0`)**: Cambios incompatibles en formatos persistidos (`APVTS`, `.settings`, `user_bank_cache.syx`), cambios disruptivos de IDs de automatización VST3 o rediseños mayores que rompan compatibilidad con sesiones anteriores (ej. `1.0.0 -> 2.0.0`).
+- **Obligatorio antes de integrar en `master`**: Todo cambio que impacte la rama `master` debe actualizar `VERSION` en `CMakeLists.txt` según el peso del cambio para que el workflow publique la nueva release `vX.Y.Z`.
+

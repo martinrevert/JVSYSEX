@@ -70,6 +70,8 @@ set(JV1010_IMGUI_UI_SOURCES
     Source/UI/Editors/DrumsEditor.cpp
     Source/UI/Editors/SystemEditor.h
     Source/UI/Editors/SystemEditor.cpp
+    Source/UI/Editors/ManualView.h
+    Source/UI/Editors/ManualView.cpp
     Source/UI/Footer/VirtualKeyboardDock.h
     Source/UI/Footer/VirtualKeyboardDock.cpp
     Source/UI/ImGuiAppView.h

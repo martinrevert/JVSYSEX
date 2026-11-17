@@ -87,6 +87,10 @@ void ImGuiAppView::render() {
                 systemEditor_.render();
                 ImGui::EndTabItem();
             }
+            if (ImGui::BeginTabItem("Manual", nullptr, tabFlags(5))) {
+                manualView_.render();
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
         }
         ImGui::EndChild();

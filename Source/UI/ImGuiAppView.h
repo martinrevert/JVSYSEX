@@ -8,6 +8,7 @@
 #include "Editors/PatchEffectsEditor.h"
 #include "Editors/DrumsEditor.h"
 #include "Editors/SystemEditor.h"
+#include "Editors/ManualView.h"
 #include "Footer/VirtualKeyboardDock.h"
 
 namespace jv1010 {
@@ -26,6 +27,7 @@ private:
     PatchEffectsEditor effectsEditor_;
     DrumsEditor drumsEditor_;
     SystemEditor systemEditor_;
+    ManualView manualView_;
     VirtualKeyboardDock footerDock_;
 
     int requestedEditorTab_{ -1 };

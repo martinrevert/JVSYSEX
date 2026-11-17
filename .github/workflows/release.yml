@@ -5,6 +5,22 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "SemVer bump override (auto inspects commits since last tag)"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      explicit_version:
+        description: "Optional exact version X.Y.Z (overrides bump_type if set)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -14,25 +30,118 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository with submodules
+      - name: Checkout repository with full history, tags, and submodules
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          fetch-tags: true
           submodules: recursive
 
-      - name: Extract SemVer from CMakeLists.txt
+      - name: Resolve incremental SemVer
         id: version
         shell: pwsh
         run: |
-          $cmake = Get-Content CMakeLists.txt -Raw
-          if ($cmake -match 'project\(JV1010EditorPro\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)') {
-            $ver = $Matches[1]
-            Write-Output "version=$ver" >> $env:GITHUB_OUTPUT
-            Write-Output "APP_VERSION=$ver" >> $env:GITHUB_ENV
-            Write-Host "Detected SemVer: $ver"
-          } else {
+          $ErrorActionPreference = 'Stop'
+          git fetch --tags --force
+
+          # 1. Read baseline version from CMakeLists.txt
+          $cmakePath = "CMakeLists.txt"
+          $cmake = Get-Content $cmakePath -Raw
+          if ($cmake -notmatch 'project\(JV1010EditorPro\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)') {
             Write-Error "Could not extract VERSION from CMakeLists.txt"
             exit 1
           }
+          $cmakeVerStr = $Matches[1]
+          $cmakeVer = [version]$cmakeVerStr
+
+          # 2. Find highest existing SemVer tag vX.Y.Z
+          $allTags = git tag -l "v*.*.*"
+          $semTags = @()
+          foreach ($t in $allTags) {
+            if ($t -match '^v([0-9]+\.[0-9]+\.[0-9]+)$') {
+              $semTags += [PSCustomObject]@{ Tag = $t; Ver = [version]$Matches[1] }
+            }
+          }
+          $latestEntry = $semTags | Sort-Object Ver -Descending | Select-Object -First 1
+          $latestTag = if ($latestEntry) { $latestEntry.Tag } else { $null }
+          $latestVer = if ($latestEntry) { $latestEntry.Ver } else { [version]"0.0.0" }
+
+          Write-Host "CMakeLists.txt VERSION: $cmakeVer | Latest git tag: $latestTag ($latestVer)"
+
+          $explicitInput = "${{ inputs.explicit_version }}".Trim()
+          $bumpInput = "${{ inputs.bump_type }}"
+          if ([string]::IsNullOrWhiteSpace($bumpInput)) { $bumpInput = "auto" }
+
+          $nextVerStr = $null
+
+          if (-not [string]::IsNullOrWhiteSpace($explicitInput)) {
+            if ($explicitInput -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+              Write-Error "explicit_version must match X.Y.Z, got: $explicitInput"
+              exit 1
+            }
+            $nextVerStr = $explicitInput
+          }
+          elseif ($bumpInput -ne "auto") {
+            $baseVer = if ($cmakeVer -gt $latestVer) { $cmakeVer } else { $latestVer }
+            switch ($bumpInput) {
+              "major" { $nextVerStr = "$($baseVer.Major + 1).0.0" }
+              "minor" { $nextVerStr = "$($baseVer.Major).$($baseVer.Minor + 1).0" }
+              "patch" { $nextVerStr = "$($baseVer.Major).$($baseVer.Minor).$($baseVer.Build + 1)" }
+            }
+          }
+          elseif ($cmakeVer -gt $latestVer) {
+            # Respect manual version bump committed in CMakeLists.txt
+            $nextVerStr = $cmakeVerStr
+            Write-Host "Using manual CMakeLists.txt bump: $nextVerStr"
+          }
+          else {
+            # Auto-bump based on Conventional Commits since latest tag
+            $range = if ($latestTag) { "$latestTag..HEAD" } else { "HEAD" }
+            $rawLog = (git log $range --format="%s%n%b%n===COMMIT_END===") -join "`n"
+            $commits = $rawLog -split "===COMMIT_END===" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+            $bump = "patch"
+            foreach ($c in $commits) {
+              $lines = ($c.Trim() -split "`r?`n")
+              $subject = if ($lines.Count -gt 0) { $lines[0].Trim() } else { "" }
+              if ($subject -match '^[a-zA-Z0-9_-]+(\([^)]+\))?!:' -or $c -match '(?m)^BREAKING[ -]CHANGE:' -or $c -match '\[major\]') {
+                $bump = "major"
+                break
+              }
+              elseif ($subject -match '^feat(\([^)]+\))?:' -or $c -match '\[minor\]') {
+                $bump = "minor"
+              }
+            }
+
+            switch ($bump) {
+              "major" { $nextVerStr = "$($latestVer.Major + 1).0.0" }
+              "minor" { $nextVerStr = "$($latestVer.Major).$($latestVer.Minor + 1).0" }
+              default { $nextVerStr = "$($latestVer.Major).$($latestVer.Minor).$($latestVer.Build + 1)" }
+            }
+            Write-Host "Auto-computed '$bump' bump from commits in ($range) -> $nextVerStr"
+          }
+
+          # 3. Guarantee tag does not collide with any existing tag
+          $candVer = [version]$nextVerStr
+          while (git tag -l "v$($candVer.Major).$($candVer.Minor).$($candVer.Build)") {
+            $candVer = [version]"$($candVer.Major).$($candVer.Minor).$($candVer.Build + 1)"
+          }
+          $finalVer = "$($candVer.Major).$($candVer.Minor).$($candVer.Build)"
+
+          # 4. Sync CMakeLists.txt in build workspace so binaries & installer embed $finalVer
+          if ($finalVer -ne $cmakeVerStr) {
+            $updatedCmake = [regex]::Replace(
+              $cmake,
+              '(project\(JV1010EditorPro\s+VERSION\s+)[0-9]+\.[0-9]+\.[0-9]+',
+              "`${1}$finalVer"
+            )
+            Set-Content -Path $cmakePath -Value $updatedCmake -NoNewline
+            Write-Host "Synced workspace CMakeLists.txt VERSION to $finalVer"
+          }
+
+          Write-Output "version=$finalVer" >> $env:GITHUB_OUTPUT
+          Write-Output "APP_VERSION=$finalVer" >> $env:GITHUB_ENV
+          Write-Host "Final Release SemVer: v$finalVer"
 
       - name: Configure CMake
         run: cmake -B build -A x64
@@ -62,6 +171,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           name: JV-1010 Editor Pro v${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: |

@@ -54,6 +54,8 @@ set(JV1010_IMGUI_UI_SOURCES
     Source/UI/ImGuiHost.cpp
     Source/UI/ImGuiWidgets.h
     Source/UI/ImGuiWidgets.cpp
+    Source/UI/Header/JV1010Silkscreen.h
+    Source/UI/Header/JV1010Silkscreen.cpp
     Source/UI/Header/TopControlBar.h
     Source/UI/Header/TopControlBar.cpp
     Source/UI/Browser/SetLibrarianView.h

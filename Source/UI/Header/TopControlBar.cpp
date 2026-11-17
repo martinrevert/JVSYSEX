@@ -1,7 +1,9 @@
 #include "TopControlBar.h"
+#include "JV1010Silkscreen.h"
 #include "../ImGuiWidgets.h"
 #include "../../Database/SrJv80CatalogDB.h"
 #include <imgui.h>
+#include <algorithm>
 
 namespace jv1010 {
 
@@ -13,8 +15,19 @@ TopControlBar::TopControlBar(JV1010EditorAudioProcessor& processor)
 void TopControlBar::render() {
     auto& midi = processor_.getMidiManager();
 
+    // Left: Roland JV-1010 front-panel vector silkscreen
+    ui::drawJV1010Silkscreen(54.0f);
+
+    ImGui::SameLine(0.0f, 14.0f);
+
+    // Right: All top bar controls grouped cleanly to the right of the silkscreen
+    ImGui::BeginGroup();
+    const float availRight = ImGui::GetContentRegionAvail().x;
+    const float midiComboW = std::clamp((availRight - 270.0f) * 0.38f, 115.0f, 165.0f);
+    const float routeComboW = std::clamp(availRight * 0.16f, 105.0f, 125.0f);
+
     // Row 1: MIDI In, MIDI Out, Routing, SysEx Queue / Status
-    ImGui::SetNextItemWidth(165.0f);
+    ImGui::SetNextItemWidth(midiComboW);
     auto curIn = midi.getCurrentInputName();
     if (ImGui::BeginCombo("##MidiIn", curIn.isEmpty() ? "MIDI In: (None)" : curIn.toRawUTF8())) {
         if (ImGui::Selectable("(None)", curIn.isEmpty())) {
@@ -34,7 +47,7 @@ void TopControlBar::render() {
     }
 
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(165.0f);
+    ImGui::SetNextItemWidth(midiComboW);
     auto curOut = midi.getCurrentOutputName();
     if (ImGui::BeginCombo("##MidiOut", curOut.isEmpty() ? "MIDI Out: (None)" : curOut.toRawUTF8())) {
         if (ImGui::Selectable("(None)", curOut.isEmpty())) {
@@ -54,7 +67,7 @@ void TopControlBar::render() {
     }
 
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(125.0f);
+    ImGui::SetNextItemWidth(routeComboW);
     const char* routeNames[] = { "Route: Direct HW", "Route: DAW Bus", "Route: HW + DAW" };
     int routeIdx = static_cast<int>(midi.getRoutingMode());
     if (ImGui::Combo("##Routing", &routeIdx, routeNames, 3)) {
@@ -104,6 +117,7 @@ void TopControlBar::render() {
     }
     ImGui::SameLine();
     ui::ToggleSwitch("Morph/Rnd", &showTools_);
+    ImGui::EndGroup();
 }
 
 void TopControlBar::triggerImportAsync() {

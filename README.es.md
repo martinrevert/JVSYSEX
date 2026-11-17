@@ -2,6 +2,8 @@
 
 **Idiomas:** [English](README.md) | **Español** | [Português](README.pt.md) | [Français](README.fr.md)
 
+[![Invitame un café en cafecito.app](https://img.shields.io/badge/Cafecito-Invitame%20un%20caf%C3%A9-FF5E5B?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://cafecito.app/martinrevert) [![Donar con PayPal](https://img.shields.io/badge/Donar-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.me/tinchorevert)
+
 ![JV-1010 Editor Pro](docs/screenshot.jpg)
 
 ## Objetivo del Proyecto
